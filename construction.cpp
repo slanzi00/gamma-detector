@@ -94,6 +94,8 @@ void DetectorConstruction::SetupNaIProperties()
   G4double energy[nEntries] = {2.0 * eV, 3.5 * eV};
   G4double rindex_nai[nEntries] = {1.85, 1.85};
   G4double scint_intensity[nEntries] = {0.0, 1.0};
+  G4double abslen_nai[nEntries] = {30. * cm, 30. * cm};
+  G4double rayleigh_nai[nEntries] = {15. * cm, 15. * cm};
 
   mpt->AddProperty("RINDEX", energy, rindex_nai, nEntries);
   mpt->AddProperty("SCINTILLATIONCOMPONENT1", energy, scint_intensity, nEntries);
@@ -101,8 +103,12 @@ void DetectorConstruction::SetupNaIProperties()
   mpt->AddConstProperty("RESOLUTIONSCALE", 1.0);
   mpt->AddConstProperty("SCINTILLATIONTIMECONSTANT1", 230. * ns);
   mpt->AddConstProperty("SCINTILLATIONYIELD1", 1.0);
+  mpt->AddConstProperty("SCINTILLATIONRISETIME1", 0.5 * ns);
+  mpt->AddProperty("ABSLENGTH", energy, abslen_nai, nEntries);
+  mpt->AddProperty("RAYLEIGH", energy, rayleigh_nai, nEntries);
   m_nai->SetMaterialPropertiesTable(mpt);
 }
+
 void DetectorConstruction::SetupAluminumProperties()
 {
   if (!m_aluminum)
@@ -114,11 +120,11 @@ void DetectorConstruction::SetupAluminumProperties()
   auto *mpt = new G4MaterialPropertiesTable();
   const G4int nEntries = 2;
   G4double energy[nEntries] = {2.0 * eV, 3.5 * eV};
-  G4double reflectivity[nEntries] = {1.0, 1.0};
-  G4double efficiency[nEntries] = {1.0, 1.0};
+  G4double reflectivity[nEntries] = {0.95, 0.95};
+  G4double rindex[nEntries] = {1.0, 1.0};
 
   mpt->AddProperty("REFLECTIVITY", energy, reflectivity, nEntries);
-  mpt->AddProperty("EFFICIENCY", energy, efficiency, nEntries);
+  mpt->AddProperty("RINDEX", energy, rindex, nEntries);
   m_aluminum->SetMaterialPropertiesTable(mpt);
 }
 
@@ -137,27 +143,23 @@ void DetectorConstruction::SetupGlassProperties()
 
 void DetectorConstruction::ConstructVolumes()
 {
-  // Geometry Parameters
   G4double crystal_radius = 40.9 * mm;
   G4double crystal_height = 76.0 * mm;
   G4double shell_thickness = 0.5 * mm;
-  G4double pmt_height = 5.0 * mm;
+  G4double pmt_height = 0.2 * mm;
 
-  // Create solids
   m_crystal_solid = new G4Tubs("nai_crystal_solid", 0.0, crystal_radius, crystal_height / 2.0, 0.0, 360.0 * deg);
   m_shell_solid = new G4Tubs("al_shell_solid", crystal_radius, crystal_radius + shell_thickness,
                              crystal_height / 2.0, 0.0, 360.0 * deg);
   m_base_solid = new G4Tubs("al_base_solid", 0.0, crystal_radius + shell_thickness,
                             shell_thickness / 2.0, 0.0, 360.0 * deg);
-  m_pmt_solid = new G4Tubs("pmt_solid", 0.0, crystal_radius, pmt_height / 2.0, 0.0, 360.0 * deg);
+  m_pmt_solid = new G4Tubs("pmt_solid", 0.0, crystal_radius, pmt_height / 2., 0., 360.0 * deg);
 
-  // Create logical volumes
   m_crystal_lv = new G4LogicalVolume(m_crystal_solid, m_nai, "nai_crystal_lv");
   m_shell_lv = new G4LogicalVolume(m_shell_solid, m_aluminum, "al_shell_lv");
   m_base_lv = new G4LogicalVolume(m_base_solid, m_aluminum, "al_base_lv");
   m_pmt_lv = new G4LogicalVolume(m_pmt_solid, m_glass_pmt, "pmt_lv");
 
-  // Set visualization attributes
   SetVisualAttributes();
 }
 
@@ -173,20 +175,16 @@ void DetectorConstruction::PlaceVolumes(G4LogicalVolume *world_lv)
 {
   G4double crystal_height = 76.0 * mm;
   G4double shell_thickness = 0.5 * mm;
-  G4double pmt_height = 5.0 * mm;
+  G4double pmt_height = 0.2 * mm;
 
-  // Place crystal (centered at origin)
   new G4PVPlacement(nullptr, G4ThreeVector(), m_crystal_lv, "nai_crystal_pv", world_lv, false, 0, true);
 
-  // Place shell (same position as crystal, just larger radius)
   new G4PVPlacement(nullptr, G4ThreeVector(), m_shell_lv, "al_shell_pv", world_lv, false, 0, true);
 
-  // Place base (below crystal)
   new G4PVPlacement(nullptr,
                     G4ThreeVector(0., 0., -crystal_height / 2.0 - shell_thickness / 2.0),
                     m_base_lv, "al_base_pv", world_lv, false, 0, true);
 
-  // Place PMT (above crystal)
   new G4PVPlacement(nullptr,
                     G4ThreeVector(0., 0., crystal_height / 2.0 + pmt_height / 2.0),
                     m_pmt_lv, "pmt_pv", world_lv, false, 0, true);
@@ -197,7 +195,6 @@ G4VPhysicalVolume *DetectorConstruction::Construct()
   auto *world_lv = create_world();
   auto *world_pv = new G4PVPlacement(0, {}, world_lv, "world_pv", nullptr, false, 0, true);
 
-  // Build and place detector components
   ConstructVolumes();
   PlaceVolumes(world_lv);
 
